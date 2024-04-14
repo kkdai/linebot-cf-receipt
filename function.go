@@ -214,7 +214,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				model := client.GenerativeModel("gemini-pro-vision")
 				prompt := []genai.Part{
 					genai.ImageData("png", data),
-					genai.Text("Describe this image with scientific detail, reply in zh-TW:"),
+					genai.Text(ImgagePrompt),
 				}
 				resp, err := model.GenerateContent(ctx, prompt...)
 				if err != nil {

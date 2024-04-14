@@ -20,16 +20,7 @@ import (
 	"github.com/line/line-bot-sdk-go/v8/linebot/webhook"
 )
 
-type FireDB struct {
-	*db.Client
-}
-
-var fireDB FireDB
-var bot *messaging_api.MessagingApiAPI
-var blob *messaging_api.MessagingApiBlobAPI
-var geminiKey string
-var channelToken string
-
+// Define prompt
 const ImgagePrompt = `This is a receipt, and you are a secretary.  
 Please organize the details from the receipt into JSON format for me. 
 I only need the JSON representation of the receipt data. Eventually, 
@@ -50,21 +41,37 @@ Please translate the Korean characters into Chinese for me.
 Using format as follow:
     Korean(Chinese)
 All the Chinese will use in zh_tw.
-Please response with the translated JSON.
-`
+Please response with the translated JSON.`
+
+// Define the context
+var fireDB FireDB
+var Memory []*genai.Content
+
+// LINE BOt sdk
+var bot *messaging_api.MessagingApiAPI
+var blob *messaging_api.MessagingApiBlobAPI
+var channelToken string
+
+// Gemni API key
+var geminiKey string
+
+// define firebase db
+type FireDB struct {
+	*db.Client
+}
+
+// Define your custom struct for Gemini ChatMemory
+type GeminiChat struct {
+	Parts []string `json:"parts"`
+	Role  string   `json:"role"`
+}
 
 func init() {
 	var err error
 	// Init firebase related variables
-	// Find home directory.
-	home, err := os.Getwd()
-	if err != nil {
-		log.Fatal(err)
-	}
 	ctx := context.Background()
-	println("home: ", home+"/key.json")
-	opt := option.WithCredentialsFile(home + "/line-vertex.json")
-	config := &firebase.Config{DatabaseURL: "https://line-vertex-default-rtdb.firebaseio.com/"}
+	opt := option.WithCredentialsJSON([]byte(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")))
+	config := &firebase.Config{DatabaseURL: os.Getenv("FIREBASE_URL")}
 	app, err := firebase.NewApp(ctx, config, opt)
 	if err != nil {
 		log.Fatalf("error initializing app: %v", err)
@@ -92,6 +99,8 @@ func init() {
 }
 
 func HelloHTTP(w http.ResponseWriter, r *http.Request) {
+	ctx := context.Background()
+
 	cb, err := webhook.ParseRequest(os.Getenv("ChannelSecret"), r)
 	if err != nil {
 		if err == linebot.ErrInvalidSignature {
@@ -102,12 +111,18 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var data map[string]interface{}
-	err = fireDB.NewRef("test").Get(context.Background(), &data)
+	var receipts []interface{}
+
+	err = fireDB.NewRef("receipt").Get(ctx, &receipts)
 	if err != nil {
-		fmt.Println(err)
-		return
+		fmt.Println("load receipt failed, ", err)
 	}
+
+	client, err := genai.NewClient(ctx, option.WithAPIKey(geminiKey))
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
 
 	for _, event := range cb.Events {
 		log.Printf("Got event %v", event)
@@ -119,8 +134,6 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 			case webhook.TextMessageContent:
 				req := message.Text
 
-				ctx := context.Background()
-				client, err := genai.NewClient(ctx, option.WithAPIKey(geminiKey))
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -128,27 +141,51 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// Pass the text content to the gemini-pro model for text generation
 				model := client.GenerativeModel("gemini-pro")
-				resp, err := model.GenerateContent(ctx, genai.Text(req))
+				cs := model.StartChat()
+				cs.History = Memory
+
+				res, err := cs.SendMessage(ctx, genai.Text(req))
 				if err != nil {
 					log.Fatal(err)
 				}
 				var ret string
-				for _, cand := range resp.Candidates {
+				for _, cand := range res.Candidates {
 					for _, part := range cand.Content.Parts {
 						ret = ret + fmt.Sprintf("%v", part)
 						log.Println(part)
 					}
 				}
 
+				// Save the conversation to the memory
+				Memory = append(Memory, &genai.Content{
+					Parts: []genai.Part{
+						genai.Text(req),
+					},
+					Role: "user",
+				})
+
+				// Save the response to the memory
+				Memory = append(Memory, &genai.Content{
+					Parts: []genai.Part{
+						genai.Text(ret),
+					},
+					Role: "model",
+				})
+
+				// Save the conversation to the firebase
+				err = fireDB.NewRef("BwAI").Set(ctx, Memory)
+				if err != nil {
+					fmt.Println(err)
+					return
+				}
+
+				// Reply message
 				if _, err := bot.ReplyMessage(
 					&messaging_api.ReplyMessageRequest{
 						ReplyToken: e.ReplyToken,
 						Messages: []messaging_api.MessageInterface{
 							&messaging_api.TextMessage{
 								Text: ret,
-							},
-							&messaging_api.TextMessage{
-								Text: fmt.Sprintf("firebase db: %v", data),
 							},
 						},
 					},
@@ -172,12 +209,6 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					log.Fatal(err)
 				}
-				ctx := context.Background()
-				client, err := genai.NewClient(ctx, option.WithAPIKey(geminiKey))
-				if err != nil {
-					log.Fatal(err)
-				}
-				defer client.Close()
 
 				// Pass the image content to the gemini-pro-vision model for image description
 				model := client.GenerativeModel("gemini-pro-vision")

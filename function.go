@@ -43,6 +43,12 @@ Using format as follow:
 All the Chinese will use in zh_tw.
 Please response with the translated JSON.`
 
+const SearchReceiptPrompt = `
+Here is my entire shopping list {all_receipts}; 
+please answer my question based on this information. {msg}. 
+Reply in zh_tw.'                
+`
+
 // Define the context
 var fireDB FireDB
 var Memory []*genai.Content
@@ -154,29 +160,6 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 						ret = ret + fmt.Sprintf("%v", part)
 						log.Println(part)
 					}
-				}
-
-				// Save the conversation to the memory
-				Memory = append(Memory, &genai.Content{
-					Parts: []genai.Part{
-						genai.Text(req),
-					},
-					Role: "user",
-				})
-
-				// Save the response to the memory
-				Memory = append(Memory, &genai.Content{
-					Parts: []genai.Part{
-						genai.Text(ret),
-					},
-					Role: "model",
-				})
-
-				// Save the conversation to the firebase
-				err = fireDB.NewRef("BwAI").Set(ctx, Memory)
-				if err != nil {
-					fmt.Println(err)
-					return
 				}
 
 				// Reply message

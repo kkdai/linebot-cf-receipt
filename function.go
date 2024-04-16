@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"io"
 	"log"
@@ -181,6 +182,17 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 			case webhook.ImageMessageContent:
 				log.Println("Got img msg ID:", message.Id)
 
+				// 取得用戶 ID
+				var uID string
+				switch source := e.Source.(type) {
+				case webhook.UserSource:
+					uID = source.UserId
+				case webhook.GroupSource:
+					uID = source.UserId
+				case webhook.RoomSource:
+					uID = source.UserId
+				}
+
 				// Get image content through message.Id
 				content, err := blob.GetMessageContent(message.Id)
 				if err != nil {
@@ -199,6 +211,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 					genai.ImageData("png", data),
 					genai.Text(ImgagePrompt),
 				}
+
 				resp, err := model.GenerateContent(ctx, prompt...)
 				if err != nil {
 					log.Fatal(err)
@@ -211,6 +224,16 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 						ret = ret + fmt.Sprintf("%v", part)
 						log.Println(part)
 					}
+				}
+				// Remove first and last line,	which are the backticks.
+				lines := strings.Split(ret, "\n")
+				jsonData := strings.Join(lines[1:len(lines)-1], "\n")
+				log.Println("Got jsonData:", jsonData)
+
+				userPath := fmt.Sprintf("receipt/%s", uID)
+				err = fireDB.NewRef(userPath).Set(ctx, jsonData)
+				if err != nil {
+					fmt.Println("load receipt failed, ", err)
 				}
 
 				// Reply message

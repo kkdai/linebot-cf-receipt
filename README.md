@@ -1,26 +1,56 @@
-# LINE Bot Server in Go
+# Receipt Helper
 
-This repository contains a LINE Bot server written in Go. The server is designed to respond to various types of LINE messages including text, sticker, and image messages.
+A handy tool for travelers who struggle with understanding the content of receipts in foreign languages. This tool was created out of the need to keep track of expenses during travel without the barrier of language. It allows users to scan receipts, extract information, and translate it for easy accounting and future reference.
 
-## Functionality
+## Project Background
 
-The server is initialized in the `init` function, where it reads environment variables for the Google Gemini API key and the LINE channel access token. It then creates instances of the LINE Messaging API and the LINE Messaging Blob API.
+While traveling abroad, I often found myself puzzled by the contents of receipts. I wanted to keep track of my expenses and have the ability to review them later, but the language barrier made it difficult. This led me to develop a small utility to assist with these challenges.
 
-The server's main function is `HelloHTTP`, which is registered as an HTTP Cloud Function. This function parses incoming requests from LINE, verifies the signature, and handles the events in the request.
+## Screenshot
 
-The server can handle the following types of events:
+![](https://github.com/kkdai/linebot-receipt-gemini/blob/main/img/receipt_1.png?raw=true)
 
-- Text messages: The server responds with the user ID and the received message.
-- Sticker messages: The server responds with the details of the received sticker.
-- Image messages: The server retrieves the image from the LINE server, sends it to the Google Gemini API for processing, and responds with the result.
-- Follow events: The server logs that it has been followed.
-- Postback events: The server logs the postback data.
-- Beacon events: The server logs the beacon hardware ID.
+![](https://github.com/kkdai/linebot-receipt-gemini/blob/main/img/receipt_2.png?raw=true)
 
-## Dependencies
+## Features
 
-This server uses the `functions-framework-go` package from Google Cloud Platform to register the function, the `line-bot-sdk-go` package to interact with the LINE Messaging API, and the `generative-ai-go` package to interact with the Google Gemini API. It also uses the standard `net/http`, `fmt`, `log`, `os`, `io`, and `context` packages from the Go standard library.
+- **Receipt Scanning**: Users can scan their receipts with their camera.
+- **Information Extraction**: The tool extracts and organizes details from receipts into a JSON format.
+- **Data Structuring**: Extracted data is formatted to fit a predefined database schema.
+- **Translation**: Korean characters on receipts are translated into Traditional Chinese (zh_tw) for better understanding.
+- **Receipt Management**: Users can clear their history of scanned receipts with a simple command.
+- **Integration**: The tool integrates with LINE messaging for easy use and Firebase for data storage.
+
+## Technologies Used
+
+- LINE Messaging API
+- Google Generative AI
+- Firebase
+- Go 1.21
+- Google Cloud Functions
+
+## Setup
+
+1. Clone the repository to your local machine.
+2. Set the following environment variables:
+   - `ChannelSecret`: Your LINE channel secret.
+   - `ChannelAccessToken`: Your LINE channel access token.
+   - `GEMINI_API_KEY`: Your Gemini API key for AI processing.
+   - `FIREBASE_URL`: Your Firebase database URL.
+3. Deploy this on Google Cloud Functions.
 
 ## Usage
 
-To use this server, set the `GOOGLE_GEMINI_API_KEY` and `ChannelAccessToken` environment variables to your Google Gemini API key and LINE channel access token, respectively. Then, send LINE messages to the bot associated with the channel access token. The server will respond according to the type of message.
+To use the Receipt Helper, send a picture of your receipt to the LINE bot. The bot will process the image, extract the data, and provide a JSON representation of the receipt. For text-based commands or queries, simply send the command or query as a message to the bot.
+
+## Commands
+
+- `test`: Send a test Flex Message.
+
+## Contributing
+
+If you'd like to contribute to this project, please feel free to submit a pull request.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

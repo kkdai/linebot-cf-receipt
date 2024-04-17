@@ -79,6 +79,19 @@ type ScanReceipts struct {
 	} `json:"Items"`
 }
 
+// ReceiptData 结构体用于存储收据数据
+type ReceiptData struct {
+	PurchaseStore   string
+	PurchaseAddress string
+	ReceiptID       string
+}
+
+// Item 结构体用于存储项目信息
+type Item struct {
+	ItemName  string
+	ItemPrice string
+}
+
 // define firebase db
 type FireDB struct {
 	*db.Client
@@ -150,7 +163,130 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 			// Handle only text messages
 			case webhook.TextMessageContent:
 				req := message.Text
+				// simulating receipt data
+				receiptData := ReceiptData{
+					PurchaseStore:   "7-Eleven",
+					PurchaseAddress: "No. 1, Songren Rd., Xinyi Dist., Taipei City 110, Taiwan (R.O.C.)",
+					ReceiptID:       "202109151200",
+				}
 
+				items := []Item{
+					{
+						ItemName:  "Item1",
+						ItemPrice: "100",
+					},
+					{
+						ItemName:  "Item2",
+						ItemPrice: "200",
+					},
+				}
+
+				if req == "test" {
+					itemsContents := make([]messaging_api.FlexComponentInterface, 0)
+					for _, item := range items {
+						itemBox := &messaging_api.FlexBox{
+							Layout: "horizontal",
+							Contents: []messaging_api.FlexComponentInterface{
+								&messaging_api.FlexText{
+									Text:  item.ItemName,
+									Size:  "sm",
+									Color: "#555555",
+									Flex:  0,
+								},
+								&messaging_api.FlexText{
+									Text:  "$" + item.ItemPrice,
+									Size:  "sm",
+									Color: "#111111",
+									Align: "end",
+								},
+							},
+						}
+						itemsContents = append(itemsContents, itemBox)
+					}
+
+					flexMsg := messaging_api.FlexBubble{
+						Body: &messaging_api.FlexBox{
+							Layout: "vertical",
+							Contents: []messaging_api.FlexComponentInterface{
+								&messaging_api.FlexText{
+									Text:   "RECEIPT",
+									Weight: "bold",
+									Color:  "#1DB446",
+									Size:   "sm",
+								},
+								&messaging_api.FlexText{
+									Text:   receiptData.PurchaseStore,
+									Weight: "bold",
+									Size:   "xxl",
+									Margin: "md",
+								},
+								&messaging_api.FlexText{
+									Text:  receiptData.PurchaseAddress,
+									Size:  "xs",
+									Color: "#aaaaaa",
+									Wrap:  true,
+								},
+								&messaging_api.FlexSeparator{
+									Margin: "xxl",
+								},
+								&messaging_api.FlexBox{
+									Layout:   "vertical",
+									Margin:   "xxl",
+									Spacing:  "sm",
+									Contents: itemsContents,
+								},
+								&messaging_api.FlexSeparator{
+									Margin: "xxl",
+								},
+								&messaging_api.FlexBox{
+									Layout: "horizontal",
+									Margin: "md",
+									Contents: []messaging_api.FlexComponentInterface{
+										&messaging_api.FlexText{
+											Text:  "RECEIPT ID",
+											Size:  "xs",
+											Color: "#aaaaaa",
+											Flex:  0,
+										},
+										&messaging_api.FlexText{
+											Text:  receiptData.ReceiptID,
+											Color: "#aaaaaa",
+											Size:  "xs",
+											Align: "end",
+										},
+									},
+								},
+							},
+						},
+						Styles: &messaging_api.FlexBubbleStyles{
+							Footer: &messaging_api.FlexBlockStyle{
+								Separator: true,
+							},
+						},
+					}
+
+					contents := &messaging_api.FlexCarousel{
+						Contents: []messaging_api.FlexBubble{flexMsg},
+					}
+
+					// Reply message
+					if _, err := bot.ReplyMessage(
+						&messaging_api.ReplyMessageRequest{
+							ReplyToken: e.ReplyToken,
+							Messages: []messaging_api.MessageInterface{
+								&messaging_api.FlexMessage{
+									Contents: contents,
+									AltText:  "請到手機上查看名片資訊",
+								},
+							},
+						},
+					); err != nil {
+						log.Print(err)
+						return
+					}
+
+					return
+				}
 				// 取得用戶 ID
 				var uID string
 				switch source := e.Source.(type) {
@@ -255,6 +391,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
+				// Pass the text content to the gemini-pro model for receipt translation.
 				model = client.GenerativeModel("gemini-pro")
 				cs := model.StartChat()
 				transJson := fmt.Sprintf("%s \n --- \n %s", TranslatePrompt, ret)
@@ -275,10 +412,104 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				jsonData := strings.Join(lines[1:len(lines)-1], "\n")
 				log.Println("Got jsonData:", jsonData)
 
+				// Unmarshal json string to struct
+				var receipts ScanReceipts
+				err = json.Unmarshal([]byte(jsonData), &receipts)
+				if err != nil {
+					fmt.Println("Unmarshal failed, ", err)
+				}
 				userPath := fmt.Sprintf("receipt/%s", uID)
-				_, err = fireDB.NewRef(userPath).Push(ctx, jsonData)
+				_, err = fireDB.NewRef(userPath).Push(ctx, receipts)
 				if err != nil {
 					fmt.Println("load receipt failed, ", err)
+				}
+
+				// Prepare flex message
+				itemsContents := make([]messaging_api.FlexComponentInterface, 0)
+				for _, item := range receipts.Items {
+					itemBox := &messaging_api.FlexBox{
+						Layout: "horizontal",
+						Contents: []messaging_api.FlexComponentInterface{
+							&messaging_api.FlexText{
+								Text:  item.ItemName,
+								Size:  "sm",
+								Color: "#555555",
+								Flex:  0,
+							},
+							&messaging_api.FlexText{
+								Text:  fmt.Sprintf("%s%d,", "$", item.ItemPrice),
+								Size:  "sm",
+								Color: "#111111",
+								Align: "end",
+							},
+						},
+					}
+					itemsContents = append(itemsContents, itemBox)
+				}
+
+				flexMsg := messaging_api.FlexBubble{
+					Body: &messaging_api.FlexBox{
+						Layout: "vertical",
+						Contents: []messaging_api.FlexComponentInterface{
+							&messaging_api.FlexText{
+								Text:   "RECEIPT",
+								Weight: "bold",
+								Color:  "#1DB446",
+								Size:   "sm",
+							},
+							&messaging_api.FlexText{
+								Text:   receipts.Receipt.PurchaseStore,
+								Weight: "bold",
+								Size:   "xxl",
+								Margin: "md",
+							},
+							&messaging_api.FlexText{
+								Text:  receipts.Receipt.PurchaseAddress,
+								Size:  "xs",
+								Color: "#aaaaaa",
+								Wrap:  true,
+							},
+							&messaging_api.FlexSeparator{
+								Margin: "xxl",
+							},
+							&messaging_api.FlexBox{
+								Layout:   "vertical",
+								Margin:   "xxl",
+								Spacing:  "sm",
+								Contents: itemsContents,
+							},
+							&messaging_api.FlexSeparator{
+								Margin: "xxl",
+							},
+							&messaging_api.FlexBox{
+								Layout: "horizontal",
+								Margin: "md",
+								Contents: []messaging_api.FlexComponentInterface{
+									&messaging_api.FlexText{
+										Text:  "RECEIPT ID",
+										Size:  "xs",
+										Color: "#aaaaaa",
+										Flex:  0,
+									},
+									&messaging_api.FlexText{
+										Text:  receipts.Receipt.ReceiptID,
+										Color: "#aaaaaa",
+										Size:  "xs",
+										Align: "end",
+									},
+								},
+							},
+						},
+					},
+					Styles: &messaging_api.FlexBubbleStyles{
+						Footer: &messaging_api.FlexBlockStyle{
+							Separator: true,
+						},
+					},
+				}
+
+				contents := &messaging_api.FlexCarousel{
+					Contents: []messaging_api.FlexBubble{flexMsg},
 				}
 
 				// Reply message
@@ -291,6 +522,10 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 							},
 							&messaging_api.TextMessage{
 								Text: transRet,
+							},
+							&messaging_api.FlexMessage{
+								Contents: contents,
+								AltText:  "請到手機上查看名片資訊",
 							},
 						},
 					},

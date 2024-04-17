@@ -52,7 +52,6 @@ Reply in zh_tw.'
 
 // Define the context
 var fireDB FireDB
-var Memory []*genai.Content
 
 // LINE BOt sdk
 var bot *messaging_api.MessagingApiAPI
@@ -149,8 +148,6 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				// Pass the text content to the gemini-pro model for text generation
 				model := client.GenerativeModel("gemini-pro")
 				cs := model.StartChat()
-				cs.History = Memory
-
 				res, err := cs.SendMessage(ctx, genai.Text(req))
 				if err != nil {
 					log.Fatal(err)
@@ -225,8 +222,24 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 						log.Println(part)
 					}
 				}
+
+				model = client.GenerativeModel("gemini-pro")
+				cs := model.StartChat()
+				transJson := fmt.Sprintf("%s \n --- \n %s", TranslatePrompt, ret)
+				res, err := cs.SendMessage(ctx, genai.Text(transJson))
+				if err != nil {
+					log.Fatal(err)
+				}
+				var transRet string
+				for _, cand := range res.Candidates {
+					for _, part := range cand.Content.Parts {
+						transRet = transRet + fmt.Sprintf("%v", part)
+						log.Println(part)
+					}
+				}
+
 				// Remove first and last line,	which are the backticks.
-				lines := strings.Split(ret, "\n")
+				lines := strings.Split(transRet, "\n")
 				jsonData := strings.Join(lines[1:len(lines)-1], "\n")
 				log.Println("Got jsonData:", jsonData)
 
@@ -243,6 +256,9 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 						Messages: []messaging_api.MessageInterface{
 							&messaging_api.TextMessage{
 								Text: ret,
+							},
+							&messaging_api.TextMessage{
+								Text: transRet,
 							},
 						},
 					},

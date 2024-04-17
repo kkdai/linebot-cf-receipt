@@ -2,6 +2,7 @@ package helloworld
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -45,8 +46,8 @@ All the Chinese will use in zh_tw.
 Please response with the translated JSON.`
 
 const SearchReceiptPrompt = `
-Here is my entire shopping list {all_receipts}; 
-please answer my question based on this information. {msg}. 
+Here is my entire shopping list %s; 
+please answer my question based on this information. %s. 
 Reply in zh_tw.'                
 `
 
@@ -60,6 +61,23 @@ var channelToken string
 
 // Gemni API key
 var geminiKey string
+
+// Receipt strcuture
+type ScanReceipts struct {
+	Receipt struct {
+		ReceiptID       string `json:"ReceiptID"`
+		PurchaseStore   string `json:"PurchaseStore"`
+		PurchaseDate    string `json:"PurchaseDate"`
+		PurchaseAddress string `json:"PurchaseAddress"`
+		TotalAmount     int    `json:"TotalAmount"`
+	} `json:"Receipt"`
+	Items []struct {
+		ItemID    string `json:"ItemID"`
+		ReceiptID string `json:"ReceiptID"`
+		ItemName  string `json:"ItemName"`
+		ItemPrice int    `json:"ItemPrice"`
+	} `json:"Items"`
+}
 
 // define firebase db
 type FireDB struct {
@@ -117,13 +135,6 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var receipts []interface{}
-
-	err = fireDB.NewRef("receipt").Get(ctx, &receipts)
-	if err != nil {
-		fmt.Println("load receipt failed, ", err)
-	}
-
 	client, err := genai.NewClient(ctx, option.WithAPIKey(geminiKey))
 	if err != nil {
 		log.Fatal(err)
@@ -140,15 +151,36 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 			case webhook.TextMessageContent:
 				req := message.Text
 
-				if err != nil {
-					log.Fatal(err)
+				// 取得用戶 ID
+				var uID string
+				switch source := e.Source.(type) {
+				case webhook.UserSource:
+					uID = source.UserId
+				case webhook.GroupSource:
+					uID = source.UserId
+				case webhook.RoomSource:
+					uID = source.UserId
 				}
-				defer client.Close()
+
+				var dbReceipts map[string]ScanReceipts
+				userPath := fmt.Sprintf("receipt/%s", uID)
+				err = fireDB.NewRef(userPath).Get(ctx, &dbReceipts)
+				if err != nil {
+					fmt.Println("load receipt failed, ", err)
+				}
+
+				// Marshall struct to json string
+				jsonData, err := json.Marshal(dbReceipts)
+				if err != nil {
+					fmt.Println("load db failed, ", err)
+				}
+
+				qry := fmt.Sprintf(SearchReceiptPrompt, string(jsonData), req)
 
 				// Pass the text content to the gemini-pro model for text generation
 				model := client.GenerativeModel("gemini-pro")
 				cs := model.StartChat()
-				res, err := cs.SendMessage(ctx, genai.Text(req))
+				res, err := cs.SendMessage(ctx, genai.Text(qry))
 				if err != nil {
 					log.Fatal(err)
 				}
@@ -244,7 +276,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				log.Println("Got jsonData:", jsonData)
 
 				userPath := fmt.Sprintf("receipt/%s", uID)
-				err = fireDB.NewRef(userPath).Set(ctx, jsonData)
+				_, err = fireDB.NewRef(userPath).Push(ctx, jsonData)
 				if err != nil {
 					fmt.Println("load receipt failed, ", err)
 				}

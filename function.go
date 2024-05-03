@@ -392,9 +392,8 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// Pass the text content to the gemini-pro model for receipt translation.
 				model = client.GenerativeModel("gemini-pro")
-				cs := model.StartChat()
 				transJson := fmt.Sprintf("%s \n --- \n %s", TranslatePrompt, ret)
-				res, err := cs.SendMessage(ctx, genai.Text(transJson))
+				res, err := model.GenerateContent(ctx, genai.Text(transJson))
 				if err != nil {
 					log.Fatal(err)
 				}

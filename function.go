@@ -315,8 +315,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 
 				// Pass the text content to the gemini-pro model for text generation
 				model := client.GenerativeModel("gemini-pro")
-				cs := model.StartChat()
-				res, err := cs.SendMessage(ctx, genai.Text(qry))
+				res, err := model.GenerateContent(ctx, genai.Text(qry))
 				if err != nil {
 					log.Fatal(err)
 				}

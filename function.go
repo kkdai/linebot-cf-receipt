@@ -190,8 +190,8 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 
 				qry := fmt.Sprintf(SearchReceiptPrompt, string(jsonData), req)
 
-				// Pass the text content to the gemini-pro model for text generation
-				model := client.GenerativeModel("gemini-pro")
+				// Pass the text content to the gemini-1.5-flash-latest model for text generation
+				model := client.GenerativeModel("gemini-1.5-flash-latest")
 				res, err := model.GenerateContent(ctx, genai.Text(qry))
 				if err != nil {
 					log.Fatal(err)
@@ -246,8 +246,8 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 					log.Fatal(err)
 				}
 
-				// Pass the image content to the gemini-pro-vision model for image description
-				model := client.GenerativeModel("gemini-pro-vision")
+				// Pass the image content to the gemini-1.5-flash-latest model for image description
+				model := client.GenerativeModel("gemini-1.5-flash-latest")
 				prompt := []genai.Part{
 					genai.ImageData("png", data),
 					genai.Text(ImgagePrompt),
@@ -268,7 +268,7 @@ func HelloHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 
 				// Pass the text content to the gemini-pro model for receipt translation.
-				model = client.GenerativeModel("gemini-pro")
+				model = client.GenerativeModel("gemini-1.5-flash-latest")
 				transJson := fmt.Sprintf("%s \n --- \n %s", TranslatePrompt, ret)
 				res, err := model.GenerateContent(ctx, genai.Text(transJson))
 				if err != nil {
